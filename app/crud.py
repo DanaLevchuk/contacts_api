@@ -1,42 +1,32 @@
 from sqlalchemy.orm import Session
 from app import models
+from app.auth import hash_password
 
 
-def get_contacts(
-    db: Session,
-    first_name: str | None = None,
-    last_name: str | None = None,
-    email: str | None = None,
-):
-    query = db.query(models.Contact)
-
-    if first_name:
-        query = query.filter(models.Contact.first_name.ilike(f"%{first_name}%"))
-
-    if last_name:
-        query = query.filter(models.Contact.last_name.ilike(f"%{last_name}%"))
-
-    if email:
-        query = query.filter(models.Contact.email.ilike(f"%{email}%"))
-
-    return query.all()
-from datetime import date, timedelta
+# ---------- USERS ----------
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
 
 
-def get_upcoming_birthdays(db: Session):
-    today = date.today()
-    end_date = today + timedelta(days=7)
+def create_user(db: Session, email: str, password: str):
+    user = models.User(
+        email=email,
+        hashed_password=hash_password(password)
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
-    contacts = db.query(models.Contact).all()
-    result = []
 
-    for contact in contacts:
-        if not contact.birthday:
-            continue
+# ---------- CONTACTS ----------
+def create_contact(db: Session, contact, user_id: int):
+    db_contact = models.Contact(**contact.dict(), owner_id=user_id)
+    db.add(db_contact)
+    db.commit()
+    db.refresh(db_contact)
+    return db_contact
 
-        birthday_this_year = contact.birthday.replace(year=today.year)
 
-        if today <= birthday_this_year <= end_date:
-            result.append(contact)
-
-    return result
+def get_contacts(db: Session, user_id: int):
+    return db.query(models.Contact).filter(models.Contact.owner_id == user_id).all()
