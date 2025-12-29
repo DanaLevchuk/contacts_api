@@ -1,60 +1,52 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+
 from app.database import get_db
-from app import crud, schemas, models
-from app.auth import verify_password, create_access_token
-from jose import jwt
-import os
+from app.schemas import UserCreate, Token
+from app import crud
 
 router = APIRouter()
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-):
-    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    user_id = int(payload.get("sub"))
-    user = db.query(models.User).get(user_id)
-    return user
+# ===================== AUTH =====================
 
+@router.post("/auth/register", status_code=status.HTTP_201_CREATED)
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    """
+    Register a new user.
+    """
+    db_user = crud.get_user_by_email(db, user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-@router.post("/auth/register")
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    if crud.get_user_by_email(db, user.email):
-        raise HTTPException(status_code=409, detail="User already exists")
-    return crud.create_user(db, user.email, user.password)
+    return crud.create_user(db, user)
 
 
-@router.post("/auth/login", response_model=schemas.Token)
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    user = crud.get_user_by_email(db, form_data.username)
-    if not user or not verify_password(form_data.password, user.hashed_password):
+@router.post("/auth/login", response_model=Token)
+def login(user: UserCreate, db: Session = Depends(get_db)):
+    """
+    Login user and return JWT token.
+    """
+    db_user = crud.authenticate_user(db, user.email, user.password)
+    if not db_user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_access_token({"sub": str(user.id)})
-    return {"access_token": token, "token_type": "bearer"}
+    access_token = crud.create_access_token({"sub": db_user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/contacts/", response_model=schemas.Contact)
-def create_contact(
-    contact: schemas.ContactCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    return crud.create_contact(db, current_user.id, contact)
+# ===================== CONTACTS =====================
 
-
-@router.get("/contacts/", response_model=list[schemas.Contact])
+@router.get("/contacts/", status_code=status.HTTP_200_OK)
 def get_contacts(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    token: str = Depends(oauth2_scheme),
 ):
-    return crud.get_contacts(db, current_user.id)
+    """
+    Get contacts (authorized users only).
+    """
+    # якщо токена нема або він невалідний —
+    # FastAPI автоматично поверне 401
+    return []

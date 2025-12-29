@@ -1,6 +1,8 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
+
 from app.database import Base
+
 
 class User(Base):
     __tablename__ = "users"
@@ -10,13 +12,16 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_verified = Column(Boolean, default=False)
 
+    contacts = relationship("Contact", back_populates="owner")
+
+
 class Contact(Base):
     __tablename__ = "contacts"
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String)
-    email = Column(String, nullable=True)
-    phone = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    email = Column(String, index=True)
+    phone = Column(String)
 
+    user_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="contacts")
